@@ -54,6 +54,7 @@ from .allegro_kuka.allegro_kuka_two_arms_regrasping import AllegroKukaTwoArmsReg
 from .allegro_kuka.allegro_kuka_two_arms_reorientation import AllegroKukaTwoArmsReorientation
 
 from .industreal.industreal_task_pegs_insert import IndustRealTaskPegsInsert
+from .industreal.industreal_task_pegs_insert_RGB import IndustRealTaskPegsInsert_RGB
 from .industreal.industreal_task_gears_insert import IndustRealTaskGearsInsert
 
 
@@ -102,6 +103,7 @@ isaacgym_task_map = {
     "FactoryTaskNutBoltPlace": FactoryTaskNutBoltPlace,
     "FactoryTaskNutBoltScrew": FactoryTaskNutBoltScrew,
     "IndustRealTaskPegsInsert": IndustRealTaskPegsInsert,
+    "IndustRealTaskPegsInsert_RGB": IndustRealTaskPegsInsert_RGB,
     "IndustRealTaskGearsInsert": IndustRealTaskGearsInsert,
     "FrankaCabinet": FrankaCabinet,
     "FrankaCubeStack": FrankaCubeStack,
