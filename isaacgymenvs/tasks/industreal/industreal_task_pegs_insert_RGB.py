@@ -44,6 +44,7 @@ import omegaconf
 import os
 import torch
 import warp as wp
+import gym
 
 from isaacgym import gymapi, gymtorch, torch_utils
 from isaacgymenvs.tasks.factory.factory_schema_class_task import FactoryABCTask
@@ -89,6 +90,29 @@ class IndustRealTaskPegsInsert_RGB(IndustRealEnvPegs, FactoryABCTask):
 
         self._acquire_task_tensors()
         self.parse_controller_spec()
+        
+        # Override observation space for rl_games CNN compatibility
+        if self.cfg_task.env.enableCameraSensors:
+            # Set proper image observation space so rl_games can build CNN correctly
+            # RGB image dimensions (H, W, C) for rl_games CNN with permute_input=True
+            self.obs_space = gym.spaces.Box(
+                low=0.0, 
+                high=1.0, 
+                shape=(64, 64, 3), 
+                dtype=np.float32
+            )
+
+    def allocate_buffers(self):
+        """Allocate the observation, states, etc. buffers with proper shape for RGB."""
+        # Call parent method first to set up basic buffers
+        super().allocate_buffers()
+        
+        # Override obs_buf shape for RGB camera data when cameras are enabled
+        if self.cfg_task.env.enableCameraSensors:
+            # Allocate obs_buf with image dimensions instead of flattened
+            self.obs_buf = torch.zeros(
+                (self.num_envs, 64, 64, 3), device=self.device, dtype=torch.float
+            )
 
         # Get Warp mesh objects for SAPU and SDF-based reward
         wp.init()
@@ -212,10 +236,11 @@ class IndustRealTaskPegsInsert_RGB(IndustRealEnvPegs, FactoryABCTask):
             torch_cam_tensor = gymtorch.wrap_tensor(camera_tensor)
             self.camera_tensors.append(torch_cam_tensor)
         
-        # Camera observation buffer - will store flattened RGB data
-        num_cam_pixels = camera_cfg.width * camera_cfg.height * 3  # RGB channels
+        # Camera observation buffer - will store RGB data in proper format for CNN
+        # For rl_games CNN: need (num_envs, H, W, C) format
         self.camera_obs_buf = torch.zeros(
-            (self.num_envs, num_cam_pixels), dtype=torch.float32, device=self.device
+            (self.num_envs, camera_cfg.height, camera_cfg.width, 3), 
+            dtype=torch.float32, device=self.device
         )
 
     def _refresh_task_tensors(self):
@@ -412,22 +437,27 @@ class IndustRealTaskPegsInsert_RGB(IndustRealEnvPegs, FactoryABCTask):
                 # Get camera tensor (H, W, 4) format where 4th channel is alpha
                 cam_tensor = self.camera_tensors[i]
                 
-                # Convert to (C, H, W) format and normalize to [0, 1]
-                # Take only RGB channels (ignore alpha)
-                cam_image = cam_tensor[:, :, :3].permute(2, 0, 1).float() / 255.0
+                # Convert to RGB and normalize to [0, 1]
+                # Take only RGB channels (ignore alpha) and keep spatial dimensions
+                cam_image = cam_tensor[:, :, :3].float() / 255.0
                 
-                # Flatten to 1D for observation
-                cam_flat = cam_image.flatten()
-                self.camera_obs_buf[i] = cam_flat
+                # Store in (H, W, C) format for CNN processing with permute_input=True
+                self.camera_obs_buf[i] = cam_image
             
             self.gym.end_access_image_tensors(self.sim)
-            
-            # Add camera observations to obs_tensors
-            obs_tensors.append(self.camera_obs_buf)
 
-        self.obs_buf = torch.cat(
-            obs_tensors, dim=-1
-        )  # shape = (num_envs, num_observations)
+        # For CNN architecture: return image observations directly when cameras enabled
+        if self.cfg_task.env.enableCameraSensors:
+            # Return image observations in proper shape for CNN
+            # rl_games expects (batch, height, width, channels) for permute_input=True
+            # camera_obs_buf is already (num_envs, 64, 64, 3)
+            self.obs_buf = self.camera_obs_buf  # Keep original shape for rl_games CNN
+            self._dict_obs = None  # Not using dictionary approach
+        else:
+            # Standard flat observations for MLP-only
+            state_obs = torch.cat(obs_tensors, dim=-1)
+            self.obs_buf = state_obs
+            self._dict_obs = None
         self.states_buf = torch.cat(state_tensors, dim=-1)
 
         return self.obs_buf

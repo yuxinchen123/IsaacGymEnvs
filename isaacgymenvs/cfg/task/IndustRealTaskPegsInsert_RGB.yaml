@@ -10,7 +10,9 @@ physics_engine: ${..physics_engine}
 
 env:
     numEnvs: 128
-    numObservations: 12312  # 24 (original) + 64*64*3 (RGB camera) = 12312
+    # When cameras enabled: observations are flattened RGB images (64*64*3 = 12,288)
+    # When cameras disabled: observations are state vector (24)
+    numObservations: 12288  # Flattened RGB image dimensions for CNN processing
     numStates: 47
     numActions: 6
 
@@ -127,3 +129,6 @@ ctrl:
         task_deriv_gains: [8, 8, 8, 8, 8, 8]
         force_ctrl_axes: [0, 0, 1, 0, 0, 0]
         wrench_prop_gains: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
+
+# Training configuration for CNN+MLP architecture
+train: IndustRealTaskPegsInsert_RGBCNN
